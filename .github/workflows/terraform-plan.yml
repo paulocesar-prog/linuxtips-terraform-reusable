@@ -1,0 +1,65 @@
+name: Terraform Validate and Plan
+
+on: 
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Diretório onde estão os arquivos terraform"
+        default: iac
+        type: string
+    secrets:
+      AWS_ROLE_TO_ASSUME:
+        description: "Role da AWS para OIDC"
+        required: true
+
+
+jobs: 
+  terraform-validate-plan:
+    name: Terraform Validate and Plan
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      AWS_REGION: us-east-1
+      TF_PLAN_FILE: tfplan
+      ARTIFACT_NAME: terraform-plan
+
+    steps:
+      - name: Checkout repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.5
+
+      - name: Terraform Init
+        run: terraform -chdir=${{ inputs.working-directory }} init -input=false
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform -chdir=${{ inputs.working-directory }} validate
+
+      - name: Terraform Plan
+        id: plan
+        if: ${{ steps.validate.conclusion == 'success' }}
+        run: |
+          terraform -chdir=${{ inputs.working-directory }} plan -input=false -out="${{ env.TF_PLAN_FILE }}"
+          terraform -chdir=${{ inputs.working-directory }} show -no-color "${{ env.TF_PLAN_FILE }}" | head -n 80
+
+      - name: Upload do plano como artefato
+        if: ${{ steps.plan.conclusion == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ inputs.working-directory }}/${{ env.TF_PLAN_FILE }}
+          retention-days: 7
