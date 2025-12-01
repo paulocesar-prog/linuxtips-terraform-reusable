@@ -1,0 +1,58 @@
+name: Terraform Destroy
+
+on: 
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Diretório onde estão os arquivos terraform"
+        default: iac
+        type: string
+    secrets:
+      AWS_ROLE_TO_ASSUME:
+        description: "Role da AWS para OIDC"
+        required: true
+
+
+jobs: 
+  terraform-destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+
+    environment: 
+      name: tfdestroy
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      AWS_REGION: us-east-1
+      TF_PLAN_FILE: tfdestroy
+      ARTIFACT_NAME: terraform-destroy
+
+    steps:
+      - name: Checkout repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.5
+
+      - name: Baixar artefato do plano
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ inputs.working-directory }}
+
+      - name: Terraform Init
+        run: terraform -chdir=${{ inputs.working-directory }} init -input=false
+
+      - name: Terraform Apply do plano de destruição
+        run: terraform -chdir=${{ inputs.working-directory }} apply -input=false "${{ env.TF_PLAN_FILE }}"

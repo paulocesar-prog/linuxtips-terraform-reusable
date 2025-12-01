@@ -1,0 +1,70 @@
+name: Terraform Destroy Plan
+
+on: 
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Diretório onde estão os arquivos terraform"
+        default: iac
+        type: string
+    secrets:
+      AWS_ROLE_TO_ASSUME:
+        description: "Role da AWS para OIDC"
+        required: true
+
+
+jobs: 
+  terraform-destroy-plan:
+    name: Terraform Destroy Plan
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      AWS_REGION: us-east-1
+      TF_PLAN_FILE: tfdestroy
+      ARTIFACT_NAME: terraform-destroy
+
+    steps:
+      - name: Checkout repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.5
+
+      - name: Terraform Init
+        run: terraform -chdir=${{ inputs.working-directory }} init -input=false
+
+      - name: Terraform Plan -destroy
+        id: plan_destroy
+        run: |
+          terraform -chdir=${{ inputs.working-directory }} plan -destroy -input=false -out="${{ env.TF_PLAN_FILE }}"
+
+      - name: Upload artifacts do destroy
+        if: ${{ steps.plan_destroy.conclusion == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: |
+            ${{ inputs.working-directory }}/${{ env.TF_PLAN_FILE }}
+          retention-days: 7
+
+  destroy_apply:
+    name: Terraform Destroy Apply
+    needs: terraform-destroy-plan
+    if: ${{ needs.terraform-destroy-plan.result == 'success' }}
+    uses: FabioBartoli/linuxtips-terraform-reusable/.github/workflows/terraform-destroy-apply.yml@main
+    with:
+      working-directory: ${{ inputs.working-directory }}
+    secrets:
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
