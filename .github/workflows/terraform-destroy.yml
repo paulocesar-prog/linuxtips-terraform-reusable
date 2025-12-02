@@ -63,7 +63,7 @@ jobs:
     name: Terraform Destroy Apply
     needs: terraform-destroy-plan
     if: ${{ needs.terraform-destroy-plan.result == 'success' }}
-    uses: FabioBartoli/linuxtips-terraform-reusable/.github/workflows/terraform-destroy-apply.yml@main
+    uses: paulocesar-prog/linuxtips-terraform-reusable/.github/workflows/terraform-destroy-apply.yml@main
     with:
       working-directory: ${{ inputs.working-directory }}
     secrets:
